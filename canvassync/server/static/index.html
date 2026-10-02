@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>canvassync</title>
+<style>
+:root {
+  --paper: #F4F7FB;
+  --card: #FFFFFF;
+  --ink: #132437;
+  --dim: #5A6B80;
+  --line: #D8E0EA;
+  --cobalt: #0A5BD3;
+  --cobalt-dark: #0847A6;
+  --navy: #0D2A4C;
+  --navy-edge: #22456E;
+  --panel-ink: #D7E3F2;
+  --panel-dim: #8FA9C6;
+  --log-ink: #A9C2DE;
+  --ok: #2E8F5B;
+  --ok-bright: #57C98B;
+  --err: #C24B3C;
+  --err-bright: #F08B7D;
+  --mark: #F3E3B0;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.shell { display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 100vh; }
+
+/* ---- library (light side) ------------------------------------------------ */
+
+.library { padding: 36px 44px 64px; max-width: 900px; width: 100%; justify-self: center; min-width: 0; }
+
+.masthead { margin-bottom: 26px; }
+.wordmark {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.wordmark .cursor {
+  display: inline-block;
+  width: 11px; height: 20px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--cobalt);
+  animation: blink 1.2s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.tagline { color: var(--dim); font-size: 13px; margin-top: 2px; }
+.tagline .mono { font-family: var(--mono); font-size: 12px; }
+
+.banner {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cobalt);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+}
+.banner p { flex: 1; min-width: 200px; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.tabs button {
+  font: 600 13px var(--sans);
+  color: var(--dim);
+  background: none; border: none;
+  padding: 8px 14px 10px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--cobalt); border-bottom-color: var(--cobalt); }
+
+/* search */
+.searchbar { display: flex; gap: 10px; margin-bottom: 18px; }
+.searchbar input {
+  flex: 1;
+  font: 16px var(--sans);
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 14px;
+}
+.searchbar input::placeholder { color: #93A2B5; }
+.searchbar select {
+  font: 13px var(--sans);
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  max-width: 220px;
+}
+
+.hint { color: var(--dim); font-size: 13px; padding: 26px 4px; }
+.hint strong { color: var(--ink); }
+
+.group-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  /* no overflow:hidden — snippet tooltips must escape the card */
+}
+.group-card summary { border-radius: 7px 7px 0 0; }
+.group-card:not([open]) summary { border-radius: 7px; }
+.group-card summary {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.group-card summary::-webkit-details-marker { display: none; }
+.group-card summary:hover { background: var(--paper); }
+.chev { font-family: var(--mono); font-size: 12px; color: var(--dim); transition: transform 0.15s; }
+.group-card[open] .chev { transform: rotate(90deg); }
+.g-label {
+  font: 600 12px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.g-count {
+  margin-left: auto;
+  font: 600 11px var(--mono);
+  color: var(--dim);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 2px 10px;
+}
+.g-body { border-top: 1px solid var(--line); padding: 2px 16px 6px; }
+
+.hit {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 2px;
+  border-top: 1px solid #EDF1F6;
+}
+.hit:first-child { border-top: none; }
+.hit-name { font-weight: 500; font-size: 13.5px; color: var(--cobalt); text-decoration: none; word-break: break-word; }
+.hit-name:hover { text-decoration: underline; }
+.hit-pages { display: inline-flex; gap: 5px; flex-wrap: wrap; flex: none; }
+.pg-chip {
+  position: relative;
+  font: 600 12px var(--mono);
+  color: var(--cobalt);
+  background: #EDF3FC;
+  border: 1px solid #C9DBF4;
+  border-radius: 6px;
+  padding: 2px 8px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.pg-chip:hover { background: #DBE9FB; }
+.pg-chip .tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(480px, 78vw);
+  background: var(--navy);
+  color: #E4EDF8;
+  font: 400 12.5px/1.55 var(--sans);
+  padding: 10px 13px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(10, 30, 60, 0.3);
+  z-index: 5;
+  pointer-events: none;
+  white-space: normal;
+}
+.pg-chip .tip::after {
+  content: "";
+  position: absolute;
+  top: 100%; left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--navy);
+}
+.pg-chip:hover .tip, .pg-chip:focus-visible .tip { display: block; }
+.pg-chip .tip mark { background: var(--mark); color: var(--ink); padding: 0 2px; border-radius: 2px; }
+.tip-sum {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  color: #9CC9F5;
+}
+.hit-code {
+  margin-left: auto;
+  font: 11px var(--mono);
+  color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 180px;
+  flex: none;
+}
+details.folder { border-top: 1px solid #EDF1F6; }
+details.folder:first-child { border-top: none; }
+details.folder summary {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 12.5px; font-weight: 600;
+  padding: 10px 2px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  word-break: break-word;
+}
+details.folder summary::-webkit-details-marker { display: none; }
+details.folder summary:hover .f-dir { color: var(--cobalt); }
+details.folder[open] .f-glyph { transform: rotate(90deg); }
+details.folder > .hit:last-child { padding-bottom: 10px; }
+.f-glyph {
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  flex: none;
+  transition: transform 0.15s;
+}
+.f-count {
+  font: 600 10.5px var(--mono);
+  color: var(--dim);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 1px 8px;
+  flex: none;
+}
+.hit.indent { border-top: none; padding: 3px 2px 3px 21px; }
+
+/* browse + recent */
+.crumbs { font-family: var(--mono); font-size: 12px; color: var(--dim); margin-bottom: 12px; word-break: break-word; }
+.crumbs button {
+  font: inherit; color: var(--cobalt);
+  background: none; border: none; padding: 0; cursor: pointer;
+}
+.crumbs button:hover { text-decoration: underline; }
+.crumbs .sep { margin: 0 5px; color: #A9B6C6; }
+.crumbs .here { color: var(--ink); }
+
+.rows { background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px;
+  border-top: 1px solid #EDF1F6;
+  min-width: 0;
+}
+.row:first-child { border-top: none; }
+.row .glyph { font-family: var(--mono); color: var(--dim); width: 14px; flex: none; }
+.row .grow { flex: 1; min-width: 0; }
+.row .name { font-size: 13px; word-break: break-word; }
+a.name { color: var(--ink); text-decoration: none; }
+a.name:hover { color: var(--cobalt); text-decoration: underline; }
+button.name {
+  font: 500 13px var(--sans); color: var(--ink);
+  background: none; border: none; padding: 0; cursor: pointer; text-align: left;
+}
+button.name:hover { color: var(--cobalt); }
+.row .sub { font-size: 11.5px; color: var(--dim); }
+.row .meta { font-family: var(--mono); font-size: 11px; color: var(--dim); flex: none; }
+.row.gone .name { color: var(--dim); text-decoration: line-through; }
+
+.linkbtn {
+  font: 12px var(--sans); color: var(--dim);
+  background: none; border: none; padding: 0; cursor: pointer; flex: none;
+}
+.linkbtn:hover { color: var(--cobalt); }
+
+/* ---- machine (navy panel) ------------------------------------------------ */
+
+.machine {
+  background: var(--navy);
+  color: var(--panel-ink);
+  padding: 30px 26px 26px;
+  display: flex; flex-direction: column; gap: 0;
+  position: sticky; top: 0;
+  height: 100vh; overflow-y: auto;
+}
+.pblock { padding: 18px 0; border-top: 1px solid var(--navy-edge); }
+.pblock:first-child { border-top: none; padding-top: 0; }
+.pblock h2 {
+  font: 600 11px var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--panel-dim);
+  margin-bottom: 10px;
+}
+
+.session { display: flex; align-items: center; gap: 10px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #6B7E96; flex: none; }
+.dot.on { background: var(--ok-bright); }
+.dot.off { background: var(--err-bright); }
+.dot.busy { background: #4FA3FF; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.session-line { flex: 1; font-size: 13px; color: #FFFFFF; min-width: 0; word-break: break-word; }
+.session-sub { font-size: 11.5px; color: var(--panel-dim); }
+
+.pbtn {
+  font: 600 13px var(--sans);
+  color: var(--panel-ink);
+  background: transparent;
+  border: 1px solid #3A5C87;
+  border-radius: 7px;
+  padding: 7px 14px;
+  cursor: pointer;
+  flex: none;
+}
+.pbtn:hover:not(:disabled) { background: rgba(255,255,255,0.07); }
+.pbtn.solid { background: #FFFFFF; color: var(--navy); border-color: #FFFFFF; }
+.pbtn.solid:hover:not(:disabled) { background: #DBE7F5; }
+.pbtn.small { font-size: 12px; padding: 5px 10px; font-weight: 500; }
+.pbtn:disabled { opacity: 0.4; cursor: default; }
+
+.sync-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.sync-row .when { font-size: 12px; color: var(--panel-dim); }
+
+/* activity log */
+.job-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.chip {
+  font: 600 11px var(--mono);
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #23446C;
+  color: var(--panel-ink);
+}
+.chip.running { background: var(--cobalt); color: #fff; }
+.chip.done { background: #1D4D36; color: var(--ok-bright); }
+.chip.error { background: #58281F; color: var(--err-bright); }
+.job-kind { font-size: 12.5px; color: #fff; font-weight: 600; }
+.job-elapsed { font-family: var(--mono); font-size: 11px; color: var(--panel-dim); margin-left: auto; }
+.job-lines {
+  font: 12px/1.55 var(--mono);
+  color: var(--log-ink);
+  background: #0A2140;
+  border: 1px solid var(--navy-edge);
+  border-radius: 7px;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.job-lines .err { color: var(--err-bright); }
+.job-lines:empty::before { content: "idle — nothing running"; color: #5B769A; }
+
+/* courses */
+.course-count { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; color: var(--panel-dim); }
+.courses ul { list-style: none; max-height: 260px; overflow-y: auto; }
+.course {
+  display: flex; align-items: baseline; gap: 9px;
+  width: 100%;
+  font: 13px var(--sans);
+  color: var(--panel-ink);
+  background: none; border: none;
+  padding: 5px 2px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 5px;
+}
+.course:hover { background: rgba(255,255,255,0.05); }
+.course .tick { font-family: var(--mono); font-size: 12px; color: var(--ok-bright); flex: none; }
+.course.off .tick { color: #567299; }
+.course.off .cname { color: var(--panel-dim); }
+.course .cname { word-break: break-word; }
+.courses .none { font-size: 12.5px; color: var(--panel-dim); }
+
+/* schedule + index */
+.setting { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.setting .state { color: var(--panel-dim); font-size: 12px; width: 100%; }
+.setting input[type=number] {
+  font: 13px var(--mono);
+  width: 54px;
+  color: #fff;
+  background: #0A2140;
+  border: 1px solid #3A5C87;
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: center;
+}
+.idx-docs { font-family: var(--mono); font-size: 12px; color: var(--panel-dim); }
+
+.machine footer {
+  margin-top: auto;
+  padding-top: 18px;
+  font: 11px var(--mono);
+  color: #55719B;
+}
+
+/* toast */
+#toast {
+  position: fixed;
+  left: 50%; bottom: 26px;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--ink); color: #fff;
+  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(10,30,60,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: min(560px, 90vw);
+  z-index: 10;
+}
+#toast.show { opacity: 1; transform: translateX(-50%); }
+#toast.bad { background: var(--err); }
+
+/* a11y + responsive */
+:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+.machine :focus-visible { outline-color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .wordmark .cursor { animation: none; opacity: 0.5; }
+  .dot.busy { animation: none; }
+  #toast { transition: none; }
+}
+@media (max-width: 940px) {
+  .shell { grid-template-columns: 1fr; }
+  .machine { position: static; height: auto; order: 2; }
+  .library { order: 1; padding: 26px 20px 40px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <main class="library">
+    <header class="masthead">
+      <h1 class="wordmark">canvassync<span class="cursor" aria-hidden="true"></span></h1>
+      <p class="tagline">your Canvas courses, synced to <span class="mono" id="dest">…</span></p>
+    </header>
+
+    <div class="banner" id="setup-banner" hidden>
+      <p id="setup-text"></p>
+      <button class="pbtn solid" id="setup-btn" style="background:var(--cobalt);color:#fff;border-color:var(--cobalt)"></button>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" aria-selected="true" data-tab="search">Search</button>
+      <button role="tab" aria-selected="false" data-tab="browse">Browse</button>
+      <button role="tab" aria-selected="false" data-tab="recent">Recent</button>
+    </nav>
+
+    <section id="tab-search" role="tabpanel">
+      <div class="searchbar">
+        <input id="q" type="search" autocomplete="off" spellcheck="false"
+               placeholder='Search your notes — quote "exact phrases"'>
+        <select id="course-filter" aria-label="Limit search to one course">
+          <option value="">All courses</option>
+        </select>
+      </div>
+      <div id="search-out"></div>
+    </section>
+
+    <section id="tab-browse" role="tabpanel" hidden>
+      <nav class="crumbs" id="crumbs" aria-label="Folder path"></nav>
+      <div id="tree-out"></div>
+    </section>
+
+    <section id="tab-recent" role="tabpanel" hidden>
+      <div id="recent-out"></div>
+    </section>
+  </main>
+
+  <aside class="machine" aria-label="Sync controls">
+    <div class="pblock">
+      <div class="session">
+        <span class="dot" id="session-dot"></span>
+        <div style="flex:1;min-width:0">
+          <div class="session-line" id="session-line">Checking session…</div>
+          <div class="session-sub"><button class="linkbtn" id="btn-check" data-job style="color:var(--panel-dim)">Re-check session</button></div>
+        </div>
+        <button class="pbtn" id="btn-login" data-job>Sign in</button>
+      </div>
+      <div class="sync-row">
+        <button class="pbtn solid" id="btn-sync" data-job>Sync now</button>
+        <span class="when" id="last-sync"></span>
+      </div>
+    </div>
+
+    <div class="pblock">
+      <h2>Activity</h2>
+      <div class="job-head" id="job-head" hidden>
+        <span class="chip" id="job-chip"></span>
+        <span class="job-kind" id="job-kind"></span>
+        <span class="job-elapsed" id="job-elapsed"></span>
+      </div>
+      <div class="job-lines" id="job-lines" aria-live="polite"></div>
+    </div>
+
+    <div class="pblock courses">
+      <h2>Courses<span class="course-count" id="course-count"></span></h2>
+      <ul id="course-list"></ul>
+    </div>
+
+    <div class="pblock">
+      <h2>Auto-sync</h2>
+      <div class="setting">
+        <span>Every</span>
+        <input type="number" id="interval" min="1" max="24" aria-label="Sync interval in hours">
+        <span>hours</span>
+        <button class="pbtn small" id="btn-schedule" style="margin-left:auto"></button>
+        <span class="state" id="schedule-state"></span>
+      </div>
+    </div>
+
+    <div class="pblock">
+      <h2>Search index</h2>
+      <div class="setting">
+        <span class="idx-docs" id="index-docs"></span>
+        <button class="pbtn small" id="btn-index" data-job style="margin-left:auto">Update</button>
+        <button class="pbtn small" id="btn-rebuild" data-job>Rebuild</button>
+      </div>
+    </div>
+
+    <div class="pblock">
+      <h2>AI summaries</h2>
+      <div class="setting">
+        <span class="state" id="ai-state"></span>
+        <button class="pbtn small" id="btn-ai-toggle" style="margin-left:auto"></button>
+      </div>
+    </div>
+
+    <footer>canvassync v<span id="version">?</span> · 127.0.0.1 only</footer>
+  </aside>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+
+let status = null;
+let lastJobSig = null;   // `${started}:${state}` — detects job completion
+let browsePath = "";
+let revealLabel = "Show in folder";
+const groupOpen = { notes: false, problems: false, other: false }; // survives re-renders while typing
+
+/* ---- helpers -------------------------------------------------------------- */
+
+async function api(path, opts = {}) {
+  if (opts.body !== undefined) {
+    opts.headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    opts.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { msg = (await res.json()).detail || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function toast(msg, bad = false) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.toggle("bad", bad);
+  t.classList.add("show");
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove("show"), 4200);
+}
+
+function ago(iso) {
+  if (!iso) return "never";
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (isNaN(s)) return iso;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  if (s < 172800) return "yesterday";
+  if (s < 14 * 86400) return `${Math.floor(s / 86400)} days ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function humanSize(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+function fileURL(rel) {
+  return "/files/" + rel.split("/").map(encodeURIComponent).join("/");
+}
+
+async function reveal(path) {
+  try { await api("/api/reveal", { method: "POST", body: { path } }); }
+  catch (e) { toast(e.message, true); }
+}
+
+/* ---- status + setup ------------------------------------------------------- */
+
+async function refreshStatus() {
+  try { status = await api("/api/status"); } catch { return; }
+  $("#dest").textContent = status.dest;
+  $("#version").textContent = status.version;
+  $("#last-sync").textContent = "Last sync: " + ago(status.last_sync);
+  $("#interval").value = status.interval_hours;
+  revealLabel = status.platform === "darwin" ? "Show in Finder"
+              : status.platform === "win32" ? "Show in Explorer" : "Show in folder";
+
+  const dot = $("#session-dot"), line = $("#session-line");
+  const s = status.session;
+  if (s.logged_in === true) {
+    dot.className = "dot on";
+    line.textContent = `Signed in as ${s.user || "?"}`;
+    $("#btn-login").textContent = "Re-sign in";
+  } else if (s.logged_in === false) {
+    dot.className = "dot off";
+    line.textContent = "Signed out";
+    $("#btn-login").textContent = "Sign in";
+  } else {
+    dot.className = "dot busy";
+    line.textContent = "Checking session…";
+  }
+
+  $("#course-count").textContent =
+    status.courses_total ? ` ${status.courses_enabled} of ${status.courses_total} syncing` : "";
+
+  $("#index-docs").textContent = status.index_docs
+    ? `${status.index_docs.toLocaleString()} documents` : "not built yet";
+
+  $("#btn-schedule").textContent = status.schedule_installed ? "Turn off" : "Turn on";
+  $("#schedule-state").textContent = status.schedule_installed
+    ? `Runs in the background every ${status.interval_hours} h, even when this page is closed.`
+    : "Off — files only download when you press Sync now.";
+
+  // first-run banner
+  const banner = $("#setup-banner"), text = $("#setup-text"), btn = $("#setup-btn");
+  if (!status.setup_complete && s.logged_in !== null) {
+    banner.hidden = false;
+    if (!s.logged_in) {
+      text.innerHTML = `<strong>First run.</strong> Sign in with your ${status.base_url} account — a browser window will open for SSO + MFA.`;
+      btn.textContent = "Sign in to Canvas";
+      btn.onclick = () => startJob("/api/login");
+    } else {
+      text.innerHTML = "<strong>Signed in.</strong> Run your first sync to download your course files.";
+      btn.textContent = "Start first sync";
+      btn.onclick = () => startJob("/api/sync");
+    }
+  } else {
+    banner.hidden = true;
+  }
+}
+
+/* ---- jobs ----------------------------------------------------------------- */
+
+const KIND_LABEL = { sync: "Sync", login: "Sign in", index: "Index", "check-session": "Session check" };
+
+async function startJob(url, body) {
+  try {
+    await api(url, { method: "POST", body });
+    pollJob(true);
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderJob(j) {
+  const running = j.state === "running";
+  document.querySelectorAll("[data-job]").forEach((b) => (b.disabled = running));
+
+  if (!j.kind) { $("#job-head").hidden = true; return; }
+  $("#job-head").hidden = false;
+  $("#job-chip").textContent = j.state;
+  $("#job-chip").className = "chip " + j.state;
+  $("#job-kind").textContent = KIND_LABEL[j.kind] || j.kind;
+  const end = j.finished ? j.finished * 1000 : Date.now();
+  const el = Math.max(0, Math.round((end - j.started * 1000) / 1000));
+  $("#job-elapsed").textContent = `${Math.floor(el / 60)}:${String(el % 60).padStart(2, "0")}`;
+
+  const pre = $("#job-lines");
+  const stick = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+  let html = (j.lines || []).map(esc).join("\n");
+  if (j.state === "done" && j.result) html += (html ? "\n" : "") + esc("✓ " + j.result);
+  if (j.state === "error" && j.error) html += (html ? "\n" : "") + `<span class="err">${esc("✗ " + j.error)}</span>`;
+  if (pre.innerHTML !== html) {
+    pre.innerHTML = html;
+    if (stick) pre.scrollTop = pre.scrollHeight;
+  }
+}
+
+async function pollJob(fast = false) {
+  clearTimeout(pollJob._h);
+  let j = { state: "idle" };
+  try { j = await api("/api/jobs/current"); } catch {}
+  renderJob(j);
+
+  const sig = j.started ? `${j.started}:${j.state}` : "idle";
+  if (lastJobSig && lastJobSig !== sig && (j.state === "done" || j.state === "error")) {
+    // a job just finished — refresh everything it may have changed
+    if (j.state === "done" && j.result) toast(`${KIND_LABEL[j.kind] || j.kind}: ${j.result}`);
+    if (j.state === "error" && j.error) toast(`${KIND_LABEL[j.kind] || j.kind} failed: ${j.error}`, true);
+    refreshStatus();
+    refreshCourses();
+    loadCourseFilter();
+    refreshActiveTab();
+  }
+  lastJobSig = sig;
+  pollJob._h = setTimeout(pollJob, j.state === "running" || fast ? 1200 : 3000);
+}
+
+/* ---- courses ---------------------------------------------------------------- */
+
+async function refreshCourses() {
+  let courses = [];
+  try { courses = await api("/api/courses"); } catch { return; }
+  const ul = $("#course-list");
+  if (!courses.length) {
+    ul.innerHTML = `<li class="none">No courses yet — sign in and they'll appear here.</li>`;
+    return;
+  }
+  ul.innerHTML = courses.map((c) => `
+    <li><button class="course ${c.enabled ? "" : "off"}" data-id="${esc(c.id)}" data-on="${c.enabled}"
+                aria-pressed="${c.enabled}" title="Click to ${c.enabled ? "stop" : "start"} syncing this course">
+      <span class="tick">[${c.enabled ? "x" : " "}]</span><span class="cname">${esc(c.name)}</span>
+    </button></li>`).join("");
+  ul.querySelectorAll(".course").forEach((btn) => {
+    btn.onclick = async () => {
+      const want = btn.dataset.on !== "true";
+      try {
+        await api(`/api/courses/${encodeURIComponent(btn.dataset.id)}`, { method: "PATCH", body: { enabled: want } });
+        refreshCourses(); refreshStatus();
+      } catch (e) { toast(e.message, true); }
+    };
+  });
+}
+
+/* ---- search ----------------------------------------------------------------- */
+
+async function loadCourseFilter() {
+  let entries = [];
+  try { entries = await api("/api/tree"); } catch { return; }
+  const sel = $("#course-filter"), keep = sel.value;
+  sel.innerHTML = `<option value="">All courses</option>` +
+    entries.filter((e) => e.dir).map((e) => `<option>${esc(e.name)}</option>`).join("");
+  sel.value = keep;
+}
+
+// what kind of document is this, judging by its folder names and filename?
+// checked in order: anything problem-ish wins even inside a "Week N" lecture folder
+function searchCategory(path) {
+  if (/problem|worksheet|exercise|solution|tutorial|past ?paper|exam|quiz|assignment|sheet|(?:\b|_)ps[ _-]?\d/i.test(path)) return "problems";
+  if (/lecture|notes?\b|slides?\b|handout|chapter|seminar|summary|reading|textbook|intro|week ?\d+|(?:\b|_)l\d+\b/i.test(path)) return "notes";
+  return "other";
+}
+
+// drop the course folder plus Canvas's boilerplate "Module Content" /
+// "Course Content" / "Content" wrappers — keep only the meaningful path
+function insideParts(doc) {
+  const parts = doc.path.split("/").slice(1);
+  while (parts.length > 1 && /^(module |course )?content$/i.test(parts[0])) parts.shift();
+  return parts;
+}
+
+function courseCode(course) {
+  return (course.split(" - ")[0] || course).trim();
+}
+
+function snipHTML(s) {
+  return esc(s).replaceAll("[[", "<mark>").replaceAll("]]", "</mark>");
+}
+
+// cluster hits by their top-level module folder ("Fourier Analysis", "Seminars"…):
+// 2+ files from the same module become one collapsible group
+const folderOpen = new Set(); // "course|module" keys the user expanded
+let lastQuery = ""; // the search that produced the current results — chips tag summaries with it
+
+function folderized(docs) {
+  const buckets = new Map();
+  for (const doc of docs) {
+    const parts = insideParts(doc);
+    const dir = parts.length > 1 ? parts[0] : "";
+    const key = doc.course + "|" + dir;
+    if (!buckets.has(key)) buckets.set(key, { key, dir, course: doc.course, docs: [] });
+    buckets.get(key).docs.push(doc);
+  }
+  // folder groups first, standalone files gathered at the bottom
+  let folders = "", loose = "";
+  for (const b of buckets.values()) {
+    if (b.docs.length > 1 && b.dir) {
+      folders += `<details class="folder" data-fkey="${esc(b.key)}"${folderOpen.has(b.key) ? " open" : ""}>
+        <summary><span class="f-glyph" aria-hidden="true">▸</span>
+          <span class="f-dir">${esc(b.dir)}</span>
+          <span class="f-count">${b.docs.length}</span>
+          <span class="hit-code" title="${esc(b.course)}">${esc(courseCode(b.course))}</span></summary>
+        ${b.docs.map((d) => hitHTML(d, true)).join("")}
+      </details>`;
+    } else {
+      loose += b.docs.map((d) => hitHTML(d, false)).join("");
+    }
+  }
+  return folders + loose;
+}
+
+function hitHTML(doc, inFolder) {
+  const parts = insideParts(doc);
+  const inside = (inFolder ? parts.slice(1).join("/") : parts.join("/")) || doc.path;
+  // browsers' built-in PDF viewer honours #page=N — link every hit straight to its page
+  const isPdf = doc.path.toLowerCase().endsWith(".pdf");
+  const href = (page) => fileURL(doc.path) + (isPdf && page ? `#page=${page}` : "");
+  // page chips: hover shows that page's matching snippet
+  const chips = doc.label
+    ? doc.hits.map((h) => {
+        const tip = `<span class="tip" role="tooltip">${snipHTML(h.snippet)}</span>`;
+        const lbl = esc(doc.label + h.page);
+        const data = `data-path="${esc(doc.path)}" data-page="${h.page}" data-q="${esc(lastQuery)}"`;
+        return isPdf
+          ? `<a class="pg-chip" href="${href(h.page)}" target="_blank" rel="noopener" ${data}>${lbl}${tip}</a>`
+          : `<span class="pg-chip" tabindex="0" ${data}>${lbl}${tip}</span>`;
+      }).join("")
+    : "";
+  return `<div class="hit${inFolder ? " indent" : ""}">
+    <a class="hit-name" href="${href(doc.hits[0] && doc.hits[0].page)}" target="_blank" rel="noopener">${esc(inside)}</a>
+    ${chips ? `<span class="hit-pages">${chips}</span>` : ""}
+    ${inFolder ? "" : `<span class="hit-code" title="${esc(doc.course)}">${esc(courseCode(doc.course))}</span>`}
+    <button class="linkbtn" data-reveal="${esc(doc.path)}">${revealLabel}</button>
+  </div>`;
+}
+
+async function runSearch() {
+  const q = $("#q").value.trim();
+  const out = $("#search-out");
+  if (q.length < 2) {
+    out.innerHTML = status && !status.index_docs
+      ? `<p class="hint">No search index yet — it's built automatically after a sync,
+         or press <strong>Update</strong> under Search index.</p>`
+      : `<p class="hint">Search every PDF, slide deck, document and notebook canvassync has downloaded.
+         Results link straight to the page or slide.</p>`;
+    return;
+  }
+  const course = $("#course-filter").value;
+  let results;
+  try {
+    results = await api(`/api/search?q=${encodeURIComponent(q)}&n=40` +
+                        (course ? `&course=${encodeURIComponent(course)}` : ""));
+  } catch (e) {
+    out.innerHTML = `<p class="hint">${esc(e.message)}</p>`;
+    return;
+  }
+  if ($("#q").value.trim() !== q) return; // stale response
+  if (!results.length) {
+    out.innerHTML = `<p class="hint">No matches for <strong>${esc(q)}</strong>${course ? " in " + esc(course) : ""}.</p>`;
+    return;
+  }
+  lastQuery = q; // chips rendered below tag themselves with this, for query-aware summaries
+  const groups = { notes: [], problems: [], other: [] };
+  results.forEach((doc) => groups[searchCategory(doc.path)].push(doc));
+  const nonEmpty = Object.values(groups).filter((g) => g.length).length;
+  out.innerHTML = [["notes", "Notes & lectures"], ["problems", "Problems & solutions"], ["other", "Everything else"]]
+    .filter(([id]) => groups[id].length)
+    .map(([id, label]) =>
+      `<details class="group-card" data-group="${id}"${groupOpen[id] || nonEmpty === 1 ? " open" : ""}>
+        <summary><span class="chev" aria-hidden="true">▸</span><span class="g-label">${label}</span><span class="g-count">${groups[id].length}</span></summary>
+        <div class="g-body">${folderized(groups[id])}</div>
+      </details>`)
+    .join("");
+  out.querySelectorAll("details.group-card").forEach((d) =>
+    d.addEventListener("toggle", () => { groupOpen[d.dataset.group] = d.open; }));
+  out.querySelectorAll("details.folder").forEach((d) =>
+    d.addEventListener("toggle", () =>
+      d.open ? folderOpen.add(d.dataset.fkey) : folderOpen.delete(d.dataset.fkey)));
+  out.querySelectorAll("[data-reveal]").forEach((b) => (b.onclick = () => reveal(b.dataset.reveal)));
+}
+
+/* ---- AI page summaries (hover) -------------------------------------------------- */
+
+const sumCache = new Map(); // "path#page#query" -> summary, for this session
+let sumTimer;
+let aiEnabled = localStorage.getItem("canvassync.aiSummaries") !== "off"; // on by default
+
+function renderAiToggle() {
+  $("#btn-ai-toggle").textContent = aiEnabled ? "Turn off" : "Turn on";
+  $("#ai-state").textContent = aiEnabled
+    ? "Hover a page number in search results for AI context on what's there."
+    : "Off — hovering shows the matched snippet only, no API calls.";
+}
+renderAiToggle();
+
+$("#btn-ai-toggle").onclick = () => {
+  aiEnabled = !aiEnabled;
+  localStorage.setItem("canvassync.aiSummaries", aiEnabled ? "on" : "off");
+  renderAiToggle();
+};
+
+document.addEventListener("mouseover", (e) => {
+  const chip = e.target.closest && e.target.closest(".pg-chip");
+  if (!chip || !chip.dataset.path || chip.dataset.sum || !aiEnabled) return;
+  clearTimeout(sumTimer);
+  sumTimer = setTimeout(() => loadSummary(chip), 350); // skip quick mouse passes
+});
+
+async function loadSummary(chip) {
+  if (!chip.isConnected || chip.dataset.sum || !chip.matches(":hover")) return;
+  chip.dataset.sum = "1";
+  const tip = chip.querySelector(".tip");
+  if (!tip) return;
+  const el = document.createElement("span");
+  el.className = "tip-sum";
+  el.textContent = "✦ summarising…";
+  tip.appendChild(el);
+  const key = chip.dataset.path + "#" + chip.dataset.page + "#" + chip.dataset.q;
+  try {
+    let s = sumCache.get(key);
+    if (!s) {
+      const r = await api(`/api/summary?path=${encodeURIComponent(chip.dataset.path)}&page=${encodeURIComponent(chip.dataset.page)}&q=${encodeURIComponent(chip.dataset.q || "")}`);
+      s = r.summary;
+      sumCache.set(key, s);
+    }
+    el.textContent = "✦ " + s;
+  } catch (err) {
+    el.textContent = "✦ " + err.message;
+  }
+}
+
+/* ---- browse ------------------------------------------------------------------ */
+
+async function loadTree(path = "") {
+  browsePath = path;
+  const crumbs = $("#crumbs"), out = $("#tree-out");
+  const parts = path ? path.split("/") : [];
+  crumbs.innerHTML = `<button data-p="">Notes</button>` + parts.map((seg, i) => {
+    const p = parts.slice(0, i + 1).join("/");
+    const last = i === parts.length - 1;
+    return `<span class="sep">/</span>` +
+      (last ? `<span class="here">${esc(seg)}</span>` : `<button data-p="${esc(p)}">${esc(seg)}</button>`);
+  }).join("");
+  crumbs.querySelectorAll("button").forEach((b) => (b.onclick = () => loadTree(b.dataset.p)));
+
+  let entries;
+  try {
+    entries = await api("/api/tree" + (path ? `?path=${encodeURIComponent(path)}` : ""));
+  } catch (e) {
+    out.innerHTML = `<p class="hint">Nothing here yet — run a sync to download your course files.</p>`;
+    return;
+  }
+  if (!entries.length) {
+    out.innerHTML = `<p class="hint">This folder is empty.</p>`;
+    return;
+  }
+  out.innerHTML = `<div class="rows">` + entries.map((e) => e.dir
+    ? `<div class="row"><span class="glyph">▸</span>
+         <div class="grow"><button class="name" data-open="${esc(e.path)}">${esc(e.name)}</button></div></div>`
+    : `<div class="row"><span class="glyph">·</span>
+         <div class="grow"><a class="name" href="${fileURL(e.path)}" target="_blank" rel="noopener">${esc(e.name)}</a></div>
+         <span class="meta">${humanSize(e.size)}</span>
+         <button class="linkbtn" data-reveal="${esc(e.path)}">${revealLabel}</button></div>`
+  ).join("") + `</div>`;
+  out.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => loadTree(b.dataset.open)));
+  out.querySelectorAll("[data-reveal]").forEach((b) => (b.onclick = () => reveal(b.dataset.reveal)));
+}
+
+/* ---- recent ------------------------------------------------------------------- */
+
+async function loadRecent() {
+  const out = $("#recent-out");
+  let entries = [];
+  try { entries = await api("/api/recent?n=30"); } catch {}
+  if (!entries.length) {
+    out.innerHTML = `<p class="hint">No downloads yet — press <strong>Sync now</strong> and new files will show up here.</p>`;
+    return;
+  }
+  out.innerHTML = `<div class="rows">` + entries.map((e) => `
+    <div class="row ${e.exists ? "" : "gone"}">
+      <div class="grow">
+        ${e.exists
+          ? `<a class="name" href="${fileURL(e.path)}" target="_blank" rel="noopener">${esc(e.name)}</a>`
+          : `<span class="name">${esc(e.name)}</span>`}
+        <div class="sub">${esc(e.course)}</div>
+      </div>
+      <span class="meta">${ago(e.downloaded)}</span>
+      ${e.exists ? `<button class="linkbtn" data-reveal="${esc(e.path)}">${revealLabel}</button>` : ""}
+    </div>`).join("") + `</div>`;
+  out.querySelectorAll("[data-reveal]").forEach((b) => (b.onclick = () => reveal(b.dataset.reveal)));
+}
+
+/* ---- tabs + wiring --------------------------------------------------------------- */
+
+function refreshActiveTab() {
+  const active = document.querySelector('.tabs button[aria-selected="true"]').dataset.tab;
+  if (active === "search") runSearch();
+  else if (active === "browse") loadTree(browsePath);
+  else loadRecent();
+}
+
+document.querySelectorAll(".tabs button").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", b === btn));
+    ["search", "browse", "recent"].forEach((t) => ($(`#tab-${t}`).hidden = t !== btn.dataset.tab));
+    refreshActiveTab();
+  };
+});
+
+$("#q").addEventListener("input", () => {
+  clearTimeout(runSearch._h);
+  runSearch._h = setTimeout(runSearch, 300);
+});
+$("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+$("#course-filter").addEventListener("change", runSearch);
+
+$("#btn-login").onclick = () => startJob("/api/login");
+$("#btn-sync").onclick = () => startJob("/api/sync");
+$("#btn-check").onclick = () => startJob("/api/check-session");
+$("#btn-index").onclick = () => startJob("/api/index", { rebuild: false });
+$("#btn-rebuild").onclick = () => {
+  if (confirm("Drop the whole index and re-read every file? This can take a few minutes."))
+    startJob("/api/index", { rebuild: true });
+};
+
+$("#btn-schedule").onclick = async () => {
+  const action = status && status.schedule_installed ? "uninstall" : "install";
+  try {
+    const r = await api("/api/schedule", { method: "POST", body: { action } });
+    toast(r.detail || (r.installed ? "Auto-sync is on." : "Auto-sync is off."));
+    refreshStatus();
+  } catch (e) { toast(e.message, true); }
+};
+
+$("#interval").addEventListener("change", async (e) => {
+  const v = parseInt(e.target.value, 10);
+  if (!(v >= 1 && v <= 24)) return;
+  try {
+    await api("/api/config", { method: "PATCH", body: { interval_hours: v } });
+    toast(`Auto-sync interval set to every ${v} h.`);
+    refreshStatus();
+  } catch (err) { toast(err.message, true); }
+});
+
+/* ---- boot ------------------------------------------------------------------------ */
+
+refreshStatus();
+refreshCourses();
+loadCourseFilter();
+runSearch();
+pollJob();
+setInterval(refreshStatus, 20000);
+</script>
+</body>
+</html>

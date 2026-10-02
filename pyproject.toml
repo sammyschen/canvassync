@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canvassync"
+version = "0.1.0"
+description = "Auto-download and organise Imperial Canvas course files"
+requires-python = ">=3.11"
+dependencies = ["playwright>=1.40", "pypdf>=4.0", "fastapi>=0.110", "uvicorn>=0.29", "anthropic>=0.60"]
+
+[project.scripts]
+canvassync = "canvassync.cli:main"
+
+[tool.setuptools]
+packages = ["canvassync", "canvassync.server"]
+
+[tool.setuptools.package-data]
+"canvassync.server" = ["static/*"]
