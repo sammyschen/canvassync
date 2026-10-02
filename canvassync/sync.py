@@ -23,6 +23,8 @@ _VIDEO_PAT = re.compile(
 # file links inside page/assignment HTML: /courses/123/files/456, /files/456/download, …
 _FILE_LINK = re.compile(r"(?:/courses/(\d+))?/files/(\d+)")
 _HTML_URL = re.compile(r'(?:src|href)="([^"]+)"', re.IGNORECASE)
+# images embedded in a page (banners, thumbnails) aren't course files worth syncing
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 
 _ILLEGAL_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -46,7 +48,7 @@ def sanitize(name: str) -> str:
 def file_links(html: str | None, course_id: str) -> list[tuple[str, str]]:
     """(course_id, file_id) pairs linked from a Canvas HTML body, in order, deduplicated."""
     seen: dict[str, str] = {}
-    for m in _FILE_LINK.finditer(html or ""):
+    for m in _FILE_LINK.finditer(_IMG_TAG.sub("", html or "")):
         seen.setdefault(m.group(2), m.group(1) or course_id)
     return [(cid, fid) for fid, cid in seen.items()]
 
@@ -90,7 +92,12 @@ def update_course_list(client: CanvasClient, config: Config) -> None:
     config.save()
 
 
-def run_sync(client: CanvasClient, config: Config, manifest: Manifest) -> Stats:
+def run_sync(client: CanvasClient, config: Config, manifest: Manifest, *, full: bool = False) -> Stats:
+    """Sync every enabled course.
+
+    By default files already downloaded aren't looked up again and pages are
+    only re-read when Canvas says they were edited; `full` re-checks everything.
+    """
     stats = Stats()
     update_course_list(client, config)
 
@@ -102,7 +109,8 @@ def run_sync(client: CanvasClient, config: Config, manifest: Manifest) -> Stats:
         log.info("[%d/%d] checking %s", i, len(enabled), entry.name)
         course_dir = config.dest / sanitize(entry.name)
         try:
-            synced = _CourseSync(client, cid, entry.name, course_dir, manifest, stats, owners).run()
+            synced = _CourseSync(client, cid, entry.name, course_dir, manifest, stats, owners,
+                                 full=full).run()
         except AuthExpired:
             raise
         except CanvasError as exc:
@@ -125,10 +133,13 @@ class _CourseSync:
     manifest: Manifest
     stats: Stats
     owners: dict[str, str]
+    full: bool = False
     # file id -> metadata from the bulk listing (empty if the Files tab is hidden)
     known: dict[str, dict] = field(default_factory=dict)
     handled: set[str] = field(default_factory=set)
     claimed: dict[str, str] = field(default_factory=dict)
+    # module item id -> page updatedAt (empty if unavailable or on a full sync)
+    page_updates: dict[str, str] = field(default_factory=dict)
 
     def run(self) -> bool:
         """Sync one course; returns False if nothing in it was accessible."""
@@ -142,6 +153,15 @@ class _CourseSync:
             return False
 
         self.known = {str(f["id"]): f for f in files or []}
+        has_pages = any(i.get("type") == "Page" for m in modules or [] for i in m.get("items") or [])
+        if has_pages and not self.full:
+            try:
+                self.page_updates = self.client.page_updates(self.course_id)
+            except AuthExpired:
+                raise
+            except CanvasError as exc:
+                log.debug("page timestamps unavailable in %s, reading every page: %s",
+                          self.course_name, exc)
         for module in modules or []:
             self._module(module)
         for assignment in assignments or []:
@@ -176,10 +196,7 @@ class _CourseSync:
             elif kind == "File" and item.get("content_id"):
                 self._file(self.course_id, str(item["content_id"]), cur_dir)
             elif kind == "Page" and item.get("page_url"):
-                page = self._try(f"open page '{title}'", self.client.page,
-                                 self.course_id, item["page_url"])
-                if page:
-                    self._html(page.get("body"), title, cur_dir)
+                self._page(item, title, cur_dir)
             elif kind in ("ExternalUrl", "ExternalTool"):
                 ext = item.get("external_url") or ""
                 url = ext if kind == "ExternalUrl" else (item.get("html_url") or ext)
@@ -200,10 +217,32 @@ class _CourseSync:
             if url:
                 self._record_link(f"tab:{tab['id']}", url, label, self.course_dir)
 
+    def _page(self, item: dict, title: str, dir_path: Path) -> None:
+        key = f"{self.course_id}:{item['page_url']}"
+        updated = self.page_updates.get(str(item["id"]))
+        cached = self.manifest.page(key)
+        if updated and cached and cached.get("updated") == updated:
+            files = [(cid, fid) for cid, fid in cached["files"]]
+            videos = cached["videos"]
+        else:
+            page = self._try(f"open page '{title}'", self.client.page,
+                             self.course_id, item["page_url"])
+            if not page:
+                return
+            html = page.get("body")
+            files, videos = file_links(html, self.course_id), video_links(html)
+            if updated:
+                self.manifest.record_page(key, updated, [list(f) for f in files], videos)
+        self._links(files, videos, title, dir_path)
+
     def _html(self, html: str | None, title: str, dir_path: Path) -> None:
-        for cid, fid in file_links(html, self.course_id):
+        self._links(file_links(html, self.course_id), video_links(html), title, dir_path)
+
+    def _links(self, files: list[tuple[str, str]], videos: list[str], title: str,
+               dir_path: Path) -> None:
+        for cid, fid in files:
             self._file(cid, fid, dir_path)
-        for i, url in enumerate(video_links(html), 1):
+        for i, url in enumerate(videos, 1):
             self._record_link(f"url:{url}", url, f"{title} (embedded video {i})", dir_path)
 
     def _other_files(self, folders: list[dict]) -> None:
@@ -227,17 +266,24 @@ class _CourseSync:
         self.handled.add(file_id)
 
         meta = self.known.get(file_id) if course_id == self.course_id else None
+        state = self.manifest.file(file_id)
+        if meta is None and not self.full and state and Path(state["path"]).exists():
+            # already downloaded: Canvas gives a re-uploaded file a new id, so
+            # there's nothing to gain from looking this one up again
+            self.claimed[state["path"]] = file_id
+            self.stats.skipped += 1
+            return
         if meta is None:
             meta = self._try(f"look up file {file_id}", self.client.file, course_id, file_id)
             if meta is None:
                 return
         name = meta.get("display_name") or meta.get("filename") or file_id
-        if meta.get("locked_for_user") or meta.get("hidden_for_user") or not meta.get("url"):
+        # hidden_for_user files ("only available with link") are fine to download
+        if meta.get("locked_for_user") or not meta.get("url"):
             log.debug("skipping locked file %s", name)
             return
 
         modified = meta.get("modified_at") or meta.get("updated_at")
-        state = self.manifest.file(file_id)
         if state and state.get("modified") == modified and Path(state["path"]).exists():
             self.claimed[state["path"]] = file_id
             self.stats.skipped += 1

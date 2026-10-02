@@ -7,7 +7,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from playwright.sync_api import BrowserContext
 
@@ -50,8 +50,23 @@ def next_page(link_header: str | None) -> str | None:
     return m.group(1) if m else None
 
 
+# One request per course for every module page's last-edit time. The REST
+# pages index is often hidden from students; this GraphQL view isn't.
+_PAGE_UPDATES_QUERY = """
+query($id: ID!, $after: String) {
+  course(id: $id) {
+    modulesConnection(first: 50, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes { moduleItems { _id content { ... on Page { updatedAt } } } }
+    }
+  }
+}
+"""
+
+
 class CanvasClient:
     def __init__(self, ctx: BrowserContext, base_url: str):
+        self._ctx = ctx
         self._req = ctx.request
         self.base_url = base_url
 
@@ -101,6 +116,39 @@ class CanvasClient:
                     f"/api/v1/courses/{course_id}/modules/{mod['id']}/items"
                 )
         return modules
+
+    def page_updates(self, course_id: str) -> dict[str, str]:
+        """Module item id -> updatedAt for every Page item in the course's modules."""
+        csrf = next(
+            (unquote(c["value"]) for c in self._ctx.cookies(self.base_url)
+             if c["name"] == "_csrf_token"),
+            "",
+        )
+        headers = {**_HEADERS, "Content-Type": "application/json", "X-CSRF-Token": csrf}
+        updates: dict[str, str] = {}
+        after = None
+        while True:
+            time.sleep(_REQUEST_DELAY)
+            resp = self._req.post(
+                self.base_url + "/api/graphql",
+                headers=headers,
+                data=json.dumps({"query": _PAGE_UPDATES_QUERY,
+                                 "variables": {"id": course_id, "after": after}}),
+            )
+            if not resp.ok:
+                raise CanvasError(f"graphql -> {resp.status}")
+            body = parse_json(resp.text())
+            if body.get("errors") or not (body.get("data") or {}).get("course"):
+                raise CanvasError(f"graphql: {str(body.get('errors'))[:200]}")
+            conn = body["data"]["course"]["modulesConnection"]
+            for node in conn["nodes"]:
+                for item in node.get("moduleItems") or []:
+                    updated = (item.get("content") or {}).get("updatedAt")
+                    if updated:
+                        updates[str(item["_id"])] = updated
+            if not conn["pageInfo"]["hasNextPage"]:
+                return updates
+            after = conn["pageInfo"]["endCursor"]
 
     def file(self, course_id: str, file_id: str) -> dict:
         return self._json(f"/api/v1/courses/{course_id}/files/{file_id}")

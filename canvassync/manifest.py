@@ -20,6 +20,7 @@ class Manifest:
             data = {}
         data.setdefault("files", {})
         data.setdefault("links", {})
+        data.setdefault("pages", {})
         return cls(data)
 
     def save(self) -> None:
@@ -27,8 +28,9 @@ class Manifest:
         MANIFEST_PATH.write_text(json.dumps(self._data, indent=2))
 
     # -- files ------------------------------------------------------------
-    # Keyed by Canvas file id; `modified` is the file's updated_at, so a
-    # re-uploaded file (same id, newer timestamp) is downloaded again.
+    # Keyed by Canvas file id; `modified` is the file's modified_at, so a file
+    # changed in place is re-downloaded whenever its metadata is checked (bulk
+    # Files listing, or `sync --full`).
 
     def file(self, file_id: str) -> dict | None:
         return self._data["files"].get(file_id)
@@ -39,6 +41,16 @@ class Manifest:
             "modified": modified,
             "downloaded": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+
+    # -- pages ------------------------------------------------------------
+    # What each module page linked to last time, so an unedited page (same
+    # updatedAt) doesn't have to be fetched again.
+
+    def page(self, key: str) -> dict | None:
+        return self._data["pages"].get(key)
+
+    def record_page(self, key: str, updated: str, files: list[list[str]], videos: list[str]) -> None:
+        self._data["pages"][key] = {"updated": updated, "files": files, "videos": videos}
 
     # -- video/external links -------------------------------------------
 

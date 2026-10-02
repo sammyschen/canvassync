@@ -62,7 +62,7 @@ py -m venv .venv
 | Command | What it does |
 |---|---|
 | `canvassync login` | Opens a browser so you can sign in once. `--url` sets the Canvas instance (first run only). The session is saved and reused headlessly for weeks. |
-| `canvassync sync` | Downloads new or changed files right now. |
+| `canvassync sync` | Downloads new files right now. Files you already have and pages that haven't been edited are skipped without asking Canvas, so a repeat sync takes seconds. `--full` re-checks everything. |
 | `canvassync courses` | Lists courses. Use `--disable "Maths"` / `--enable "Maths"` to choose which ones sync. |
 | `canvassync index` | Builds the search index. You only run it once; after that it updates itself after each sync. |
 | `canvassync search TERMS` | Searches all notes. `--course "Quantum"` filters by course, `-n 20` shows more results. |
@@ -168,8 +168,11 @@ Canvas web app uses), so canvassync only ever sees content your account can
 already access. For each course it reads the module list, the pages those
 modules link to, the assignment descriptions, the course tabs (to find
 Panopto) and, if visible, the Files area. `~/.canvassync/manifest.json`
-records every downloaded file by its Canvas id and `modified_at` timestamp,
-so syncs don't download the same file twice.
+records every downloaded file by its Canvas id, plus the file links found on
+each page. A repeat sync doesn't look up files it already has, because Canvas
+gives a re-uploaded file a new id. It also asks Canvas's GraphQL API once per
+course for each page's last-edit time and only re-reads pages that changed.
+`canvassync sync --full` skips both shortcuts.
 
 ## License
 

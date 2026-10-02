@@ -44,7 +44,7 @@ def cmd_login(args) -> int:
     return 0
 
 
-def cmd_sync(_args) -> int:
+def cmd_sync(args) -> int:
     config = Config.load()
     manifest = Manifest.load()
     try:
@@ -55,7 +55,7 @@ def cmd_sync(_args) -> int:
                 notify("canvassync", "Canvas session expired — run 'canvassync login' in a terminal.")
                 return 2
             client = CanvasClient(ctx, config.base_url)
-            stats = run_sync(client, config, manifest)
+            stats = run_sync(client, config, manifest, full=args.full)
     except AuthExpired:
         manifest.save()  # keep whatever was downloaded before the session died
         log.error("Canvas session expired mid-sync — run 'canvassync login' to sign in again.")
@@ -220,7 +220,9 @@ def main(argv: list[str] | None = None) -> None:
         help="Canvas base URL, e.g. https://canvas.example.ac.uk "
              "(defaults to canvas.imperial.ac.uk on first run; remembered after that)",
     )
-    sub.add_parser("sync", help="download new/changed files now")
+    p = sub.add_parser("sync", help="download new/changed files now")
+    p.add_argument("--full", action="store_true",
+                   help="re-check every file and page instead of skipping ones already synced")
     p = sub.add_parser("courses", help="list courses; enable/disable syncing per course")
     p.add_argument("--enable", metavar="NAME_OR_ID")
     p.add_argument("--disable", metavar="NAME_OR_ID")
