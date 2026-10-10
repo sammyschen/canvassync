@@ -57,6 +57,13 @@ py -m venv .venv
 .venv\Scripts\canvassync schedule install
 ```
 
+Optional: put canvassync on your PATH so you can just type `canvassync`
+(run from the `canvassync` folder, then open a new PowerShell window):
+
+```powershell
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$PWD\.venv\Scripts", "User")
+```
+
 ## Commands
 
 | Command | What it does |
