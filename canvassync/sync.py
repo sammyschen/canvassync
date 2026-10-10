@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -33,6 +35,10 @@ _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
                  *(f"COM{i}" for i in range(1, 10)),
                  *(f"LPT{i}" for i in range(1, 10))}
 
+# Windows rejects paths of 260+ characters unless long paths are enabled in the
+# registry (off by default); leave room for the ".part" download suffix
+_WIN_MAX_PATH = 259 - len(".part")
+
 OTHER_FILES = "Other files"
 ASSIGNMENTS = "Assignments"
 
@@ -42,7 +48,8 @@ def sanitize(name: str) -> str:
     s = re.sub(r"\s+", " ", s).strip().strip(".")
     if s.split(".")[0].upper() in _WIN_RESERVED:
         s = "_" + s
-    return s[:150] or "untitled"
+    # trailing dots/spaces are dropped by Windows, so the folder wouldn't match its path
+    return s[:150].rstrip(" .") or "untitled"
 
 
 def file_links(html: str | None, course_id: str) -> list[tuple[str, str]]:
@@ -61,19 +68,36 @@ def video_links(html: str | None) -> list[str]:
     return list(seen)
 
 
+def _fit_path(dir_path: Path, fname: str) -> Path:
+    """dir_path / fname, with the name's stem shortened to fit Windows' path limit."""
+    target = dir_path / fname
+    if sys.platform != "win32":
+        return target
+    excess = len(os.path.abspath(target)) - _WIN_MAX_PATH
+    if excess <= 0:
+        return target
+    stem, dot, ext = fname.rpartition(".")
+    if not (dot and stem):
+        stem, ext = fname, ""
+    keep = max(len(stem) - excess, 8)  # if the folder alone is too long, the write fails and is logged
+    return dir_path / (stem[:keep].rstrip(" .") + (f".{ext}" if ext else ""))
+
+
 @dataclass
 class Stats:
     courses: int = 0
     downloaded: int = 0
     updated: int = 0
     skipped: int = 0
+    unavailable: int = 0
     links_added: int = 0
     errors: int = 0
 
     def summary(self) -> str:
         return (
             f"{self.courses} courses: {self.downloaded} new, {self.updated} updated, "
-            f"{self.skipped} unchanged, {self.links_added} video links, {self.errors} errors"
+            f"{self.skipped} unchanged, {self.unavailable} not accessible, "
+            f"{self.links_added} video links, {self.errors} errors"
         )
 
 
@@ -276,11 +300,13 @@ class _CourseSync:
         if meta is None:
             meta = self._try(f"look up file {file_id}", self.client.file, course_id, file_id)
             if meta is None:
+                self.stats.unavailable += 1
                 return
         name = meta.get("display_name") or meta.get("filename") or file_id
         # hidden_for_user files ("only available with link") are fine to download
         if meta.get("locked_for_user") or not meta.get("url"):
             log.debug("skipping locked file %s", name)
+            self.stats.unavailable += 1
             return
 
         modified = meta.get("modified_at") or meta.get("updated_at")
@@ -294,7 +320,8 @@ class _CourseSync:
             self.client.download(meta["url"], target)
         except AuthExpired:
             raise
-        except CanvasError as exc:
+        except (CanvasError, OSError) as exc:
+            # an unwritable path (too long, file open elsewhere) shouldn't end the whole sync
             log.error("download failed for %s: %s", name, exc)
             self.stats.errors += 1
             return
@@ -309,7 +336,7 @@ class _CourseSync:
         self.owners[str(target)] = file_id
 
     def _target(self, file_id: str, dir_path: Path, fname: str) -> Path:
-        target = dir_path / fname
+        target = _fit_path(dir_path, fname)
         key = str(target)
         taken_now = self.claimed.get(key) not in (None, file_id)
         owner = self.owners.get(key)
@@ -317,7 +344,7 @@ class _CourseSync:
         if taken_now or taken_before:
             stem, dot, ext = fname.rpartition(".")
             fname = f"{stem} ({file_id}).{ext}" if dot and stem else f"{fname} ({file_id})"
-            target = dir_path / fname
+            target = _fit_path(dir_path, fname)
         self.claimed[str(target)] = file_id
         return target
 
